@@ -298,3 +298,305 @@ document.addEventListener('DOMContentLoaded',function(){
     });
   }
 });
+
+
+
+/* ===== Dark / Light theme + clean per-section PDF ===== */
+(function(){
+  const THEME_KEY='mohasebat-theme';
+  const body=document.body;
+  const themeButtons=[document.getElementById('themeToggle'),document.getElementById('themeToggleDesktop')].filter(Boolean);
+
+  function applyTheme(mode){
+    body.classList.toggle('dark',mode==='dark');
+    themeButtons.forEach(btn=>{
+      btn.innerHTML=btn.id==='themeToggleDesktop' ? (mode==='dark'?'☀ <span>حالت روشن</span>':'☾ <span>تغییر تم</span>') : (mode==='dark'?'☀':'☾');
+      btn.title=mode==='dark'?'حالت روشن':'حالت تاریک';
+      btn.setAttribute('aria-label',btn.title);
+    });
+    try{localStorage.setItem(THEME_KEY,mode)}catch(e){}
+  }
+  let theme='light';
+  try{theme=localStorage.getItem(THEME_KEY)||'light'}catch(e){}
+  applyTheme(theme);
+  themeButtons.forEach(btn=>btn.addEventListener('click',()=>applyTheme(body.classList.contains('dark')?'light':'dark')));
+
+  function esc(s){
+    return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+  function txt(el){
+    return el ? (el.innerText||el.textContent||'').replace(/\n{3,}/g,'\n\n').trim() : '';
+  }
+
+  function sectionData(id){
+    const sec=document.getElementById(id);
+    if(!sec) return null;
+    const title=sec.querySelector('h2')?.textContent.trim()||'گزارش محاسبات';
+    let bodyHtml='';
+    if(id==='ventilation'){
+      bodyHtml=`<div class="inputs">
+        <div><b>جمع مصرف گاز</b><span>${esc(document.getElementById('gasConsumption')?.value)} m³/h</span></div>
+        <div><b>حجم فضا</b><span>${esc(document.getElementById('roomVolume')?.value)} m³</span></div>
+        <div><b>خروجی پایه</b><span>${esc(document.getElementById('heatOutput')?.textContent)} kCal/h</span></div>
+      </div>
+      <div class="cards">${Array.from(sec.querySelectorAll('#ventCards .calc-card')).map(c=>`<article><div class="status">${esc(c.querySelector('.status')?.textContent)}</div><h3>${esc(c.querySelector('h3')?.textContent)}</h3><div class="big">${esc(c.querySelector('.calc-value')?.textContent)}</div><div class="req">${esc(txt(c.querySelector('.requirements')))}</div></article>`).join('')}</div>`;
+    } else if(id==='pipe'){
+      bodyHtml=`<div class="inputs">
+        <div><b>دورترین نقطه مصرف</b><span>${esc(document.getElementById('pipeDistance')?.selectedOptions?.[0]?.textContent||'—')} متر</span></div>
+        <div><b>میزان مصرف گاز</b><span>${esc(document.getElementById('pipeDemand')?.value||'—')} m³/h</span></div>
+      </div>
+      <div class="result">${esc(txt(document.getElementById('pipeResult')))||'نتیجه‌ای برای این ورودی ثبت نشده است.'}</div>`;
+    } else if(id==='appliance'){
+      bodyHtml=`<div class="inputs"><div><b>نوع ساختمان</b><span>${esc(document.getElementById('buildingType')?.selectedOptions?.[0]?.textContent||'—')}</span></div></div>
+      <div class="desc">${esc(txt(document.getElementById('buildingDescription')))}</div>
+      <div class="cards">${Array.from(sec.querySelectorAll('#applianceGrid .appliance-card')).map(c=>`<article><h3>${esc(c.querySelector('h3')?.textContent)}</h3><div class="status">${esc(c.querySelector('.status')?.textContent)}</div></article>`).join('')}</div>
+      <div class="req"><b>الزامات و توضیحات:</b><br>${esc(txt(document.getElementById('buildingRequirements')))}</div>`;
+    } else if(id==='units'){
+      bodyHtml=`<div class="inputs">
+        <div><b>مقدار</b><span>${esc(document.getElementById('unitValue')?.value)}</span></div>
+        <div><b>از واحد</b><span>${esc(document.getElementById('fromUnit')?.selectedOptions?.[0]?.textContent||'—')}</span></div>
+        <div><b>به واحد</b><span>${esc(document.getElementById('toUnit')?.selectedOptions?.[0]?.textContent||'—')}</span></div>
+      </div>
+      <div class="result"><b>نتیجه تبدیل</b><strong>${esc(document.getElementById('conversionOutput')?.textContent||'—')}</strong></div>`;
+    } else if(id==='gasApplianceConsumption'){
+      const selected=Array.from(sec.querySelectorAll('#gasConsumptionTable tbody tr'))
+        .filter(r=>(Number(r.querySelector('.gas-qty')?.value)||0)>0);
+      const fmt=n=>Number(n).toLocaleString('fa-IR',{maximumFractionDigits:2});
+      let minSum=0,maxSum=0;
+      const rowsHtml=selected.map(r=>{
+        const q=Math.max(0,Math.floor(Number(r.querySelector('.gas-qty')?.value)||0));
+        const min=Number(r.dataset.min)||0,max=Number(r.dataset.max)||0;
+        minSum+=min*q; maxSum+=max*q;
+        const consumption=min===max
+          ? `${fmt(min*q)} m³/h`
+          : `${fmt(min*q)} تا ${fmt(max*q)} m³/h`;
+        return `<tr>
+          <td>${fmt(q)}</td>
+          <td>${esc(txt(r.querySelector('.device-cell')))}</td>
+          <td>${esc(txt(r.querySelector('.consumption-cell')))}</td>
+          <td>${consumption}</td>
+        </tr>`;
+      }).join('');
+      const hasRange=selected.some(r=>Number(r.dataset.min)!==Number(r.dataset.max));
+      bodyHtml=`<div class="result">
+        <b>مجموع مصرفی</b>
+        <strong>${selected.length?(hasRange?`${fmt(minSum)} تا ${fmt(maxSum)}`:fmt(minSum)):'۰'} m³/h</strong>
+      </div>
+      <table style="width:100%;border-collapse:collapse;margin-top:14px;font-size:10px">
+        <thead><tr style="background:#132a3d;color:#fff">
+          <th style="padding:8px;text-align:center">تعداد</th>
+          <th style="padding:8px;text-align:right">دستگاه</th>
+          <th style="padding:8px;text-align:center">مصرف هر مورد</th>
+          <th style="padding:8px;text-align:center">مصرف محاسبه‌شده</th>
+        </tr></thead>
+        <tbody>${rowsHtml||'<tr><td colspan="4" style="padding:12px;text-align:center">موردی انتخاب نشده است.</td></tr>'}</tbody>
+      </table>`;
+    } else if(id==='validation'){
+      bodyHtml=`<div class="cards">${Array.from(sec.querySelectorAll('.test-card')).map(c=>`<article><h3>${esc(c.querySelector('h3')?.textContent)}</h3><div class="req">${esc(txt(c))}</div></article>`).join('')}</div>`;
+    }
+    return {title,bodyHtml};
+  }
+
+  function printSection(id){
+    if(id==='validation') return;
+    const data=sectionData(id);
+    if(!data) return;
+    const date=new Intl.DateTimeFormat('fa-IR',{dateStyle:'full',timeStyle:'short'}).format(new Date());
+    const w=window.open('','_blank','width=900,height=900');
+    if(!w){alert('لطفاً اجازه باز شدن پنجره جدید را فعال کنید.');return;}
+    w.document.open();
+    w.document.write(`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>${esc(data.title)} - محاسبات مهندسی گاز</title>
+<style>
+@page{size:A4;margin:10mm}
+*{box-sizing:border-box}
+body{margin:0;background:#f6f8fb;color:#182230;font-family:Tahoma,Arial,sans-serif;line-height:1.9;font-size:12px}
+.sheet{max-width:780px;margin:0 auto;background:#fff;padding:20px;border:1px solid #e1e6ed;border-radius:14px}
+.header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #182230;padding-bottom:14px;margin-bottom:18px}
+h1{font-size:22px;margin:0 0 3px}.subtitle{font-size:10px;color:#687586}.date{font-size:9px;color:#687586;text-align:left}
+h2{font-size:17px;margin:0 0 15px}
+.inputs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:15px}
+.inputs>div{background:#f5f7fa;border:1px solid #e1e6ed;border-radius:10px;padding:10px}
+.inputs b{display:block;font-size:9px;color:#687586;margin-bottom:3px}.inputs span{font-size:12px;font-weight:800}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cards article{border:1px solid #e0e5eb;border-radius:10px;padding:10px;background:#fff;break-inside:avoid}
+.cards h3{font-size:13px;margin:5px 0 7px}.status{display:inline-block;padding:3px 8px;border-radius:999px;background:#edf5ff;color:#286fc5;font-weight:800;font-size:9px}.big{font-size:22px;font-weight:900;margin:4px 0 8px}.req,.desc,.result{white-space:pre-line;border-radius:10px;background:#f7f9fb;border:1px solid #e5e9ef;padding:11px;font-size:10px;color:#394555}
+.result{font-size:12px}.result strong{display:block;font-size:22px;margin-top:5px}.footer{margin-top:18px;padding-top:10px;border-top:1px solid #e2e6eb;font-size:8px;color:#7b8591;text-align:center}
+@media print{body{background:#fff}.sheet{border:0;margin:0;max-width:none;padding:0}}
+</style></head><body><div class="sheet">
+<div class="header"><div><h1>محاسبات مهندسی گاز</h1><div class="subtitle">${esc(data.title)}</div></div><div class="date">${esc(date)}</div></div>
+<h2>${esc(data.title)}</h2>${data.bodyHtml}
+<div class="footer">گزارش نتیجه بخش انتخاب‌شده — تهیه‌شده از اطلاعات فعلی صفحه محاسبات</div>
+</div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),300));<\/script></body></html>`);
+    w.document.close();
+  }
+
+  document.querySelectorAll('[data-pdf-section]').forEach(btn=>{
+    btn.addEventListener('click',()=>printSection(btn.dataset.pdfSection));
+  });
+})();
+
+(function(){
+  const c=document.getElementById('chimneyCapacity'), h=document.getElementById('chimneyHeight');
+  const b=document.getElementById('chimneyCalculate'), box=document.getElementById('chimneyResults');
+  const d=document.getElementById('chimneyDiameterResult'), s=document.getElementById('chimneySquareResult'), e=document.getElementById('chimneyError');
+  function customRound(n){const w=Math.floor(n), f=n-w; return f<=0.5?w:w+1;}
+  function calc(){
+    const kcal=Number(c?.value), m=Number(h?.value);
+    if(!kcal||kcal<=0||!m||m<=0){e.textContent='لطفاً ظرفیت حرارتی و ارتفاع را به‌درستی وارد کنید.';e.hidden=false;box.hidden=true;return}
+    e.hidden=true;
+    const btuh=kcal*3.968320719, ft=m*3.280839895;
+    const raw=Math.sqrt((btuh/(1826*Math.sqrt(ft))))*2.54*1.1;
+    const diameter=Math.max(15,customRound(raw));
+    const square=Math.max(13,customRound(Math.sqrt((diameter*diameter*3.14)/4)));
+    d.textContent=diameter.toLocaleString('fa-IR'); s.textContent=square.toLocaleString('fa-IR'); box.hidden=false;
+    window.__chimneyLast={kcal,m,btuh,ft,diameter,square};
+  }
+  b?.addEventListener('click',calc); [c,h].forEach(x=>x?.addEventListener('keydown',q=>{if(q.key==='Enter')calc()}));
+})();
+
+/* Explicit theme labels: «حالت سیاه» / «حالت روشن» */
+(function(){
+  const bs=[document.getElementById('themeToggleDesktop'),document.getElementById('themeToggle')].filter(Boolean);
+  function sync(){
+    const dark=document.body.classList.contains('dark');
+    bs.forEach(b=>{
+      const i=b.querySelector('.theme-icon'), l=b.querySelector('.theme-label');
+      if(i)i.textContent=dark?'☀':'☾';
+      if(l)l.textContent=dark?'حالت روشن':'حالت سیاه';
+      b.title=dark?'حالت روشن':'حالت سیاه';
+    });
+  }
+  bs.forEach(b=>b.addEventListener('click',()=>setTimeout(sync,20))); sync();
+})();
+
+(function(){
+ const b=document.getElementById('chimneyCalculate'); if(!b)return;
+ const rnd=n=>{const w=Math.floor(n),f=n-w;return f<=0.5?w:w+1};
+ b.addEventListener('click',function(){
+  const k=parseFloat(document.getElementById('chimneyCapacity').value),m=parseFloat(document.getElementById('chimneyHeight').value);
+  const r=document.getElementById('chimneyResults');
+  if(!(k>0&&m>0)){r.hidden=true;return}
+  const btuh=k*3.968320719, ft=m*3.280839895;
+  const d=Math.max(15,rnd(Math.sqrt((btuh/(1826*Math.sqrt(ft))))*2.54*1.1));
+  const s=Math.max(13,rnd(Math.sqrt((d*d*3.14)/4)));
+  document.getElementById('chimneyDiameterResult').textContent=d;
+  document.getElementById('chimneySquareResult').textContent=s;
+  r.hidden=false;
+ });
+})();
+
+
+/* Gas appliance consumption selector */
+(function(){
+  const section = document.getElementById('gasApplianceConsumption');
+  if(!section) return;
+
+  const rows = Array.from(section.querySelectorAll('#gasConsumptionTable tbody tr'));
+  const total = document.getElementById('gasConsumptionTotal');
+  const caption = document.getElementById('gasConsumptionTotalCaption');
+  const count = document.getElementById('gasConsumptionSelectedCount');
+  const clear = document.getElementById('clearGasConsumption');
+
+  const faDigits = n => Number(n).toLocaleString('fa-IR',{
+    minimumFractionDigits: Number.isInteger(n) ? 0 : 1,
+    maximumFractionDigits: 2
+  });
+
+  function qtyOf(row){
+    const input = row.querySelector('.gas-qty');
+    const n = Math.floor(Number(input?.value) || 0);
+    return Math.max(0, Math.min(999, n));
+  }
+
+  function setSelected(row, selected){
+    row.classList.toggle('selected', selected);
+    row.setAttribute('aria-pressed', String(selected));
+    const input = row.querySelector('.gas-qty');
+    if(selected && input && qtyOf(row) === 0) input.value = '1';
+    if(!selected && input) input.value = '0';
+  }
+
+  function update(){
+    const selected = rows.filter(row => qtyOf(row) > 0);
+    let minSum = 0, maxSum = 0, totalUnits = 0;
+
+    selected.forEach(row => {
+      const q = qtyOf(row);
+      const min = Number(row.dataset.min) || 0;
+      const max = Number(row.dataset.max) || 0;
+      minSum += min * q;
+      maxSum += max * q;
+      totalUnits += q;
+    });
+
+    rows.forEach(row => {
+      const active = qtyOf(row) > 0;
+      row.classList.toggle('selected', active);
+      row.setAttribute('aria-pressed', String(active));
+    });
+
+    count.textContent = faDigits(totalUnits);
+
+    if(!selected.length){
+      total.innerHTML = '۰ <b>m³/h</b>';
+      caption.textContent = 'تعداد هر وسیله را در ستون «تعداد» وارد کنید';
+      return;
+    }
+
+    const hasRange = selected.some(row => Number(row.dataset.min) !== Number(row.dataset.max));
+
+    if(hasRange){
+      total.innerHTML = `${faDigits(minSum)} تا ${faDigits(maxSum)} <b>m³/h</b>`;
+      caption.textContent = `مجموع مصرف با احتساب تعداد واردشده برای هر وسیله`;
+    }else{
+      total.innerHTML = `${faDigits(minSum)} <b>m³/h</b>`;
+      caption.textContent = `مجموع مصرف ${faDigits(totalUnits)} دستگاه`;
+    }
+  }
+
+  rows.forEach(row => {
+    row.tabIndex = 0;
+    row.setAttribute('role','button');
+    row.setAttribute('aria-pressed','false');
+
+    const input = row.querySelector('.gas-qty');
+
+    input?.addEventListener('click', event => event.stopPropagation());
+    input?.addEventListener('keydown', event => event.stopPropagation());
+
+    input?.addEventListener('input', () => {
+      let n = Math.floor(Number(input.value) || 0);
+      n = Math.max(0, Math.min(999, n));
+      input.value = String(n);
+      row.classList.toggle('selected', n > 0);
+      row.setAttribute('aria-pressed', String(n > 0));
+      update();
+    });
+
+    row.addEventListener('click', event => {
+      if(event.target.closest('.gas-qty')) return;
+      setSelected(row, !row.classList.contains('selected'));
+      update();
+    });
+
+    row.addEventListener('keydown', event => {
+      if(event.key === 'Enter' || event.key === ' '){
+        event.preventDefault();
+        row.click();
+      }
+    });
+  });
+
+  clear?.addEventListener('click', () => {
+    rows.forEach(row => {
+      const input = row.querySelector('.gas-qty');
+      if(input) input.value = '0';
+      row.classList.remove('selected');
+      row.setAttribute('aria-pressed','false');
+    });
+    update();
+  });
+
+  update();
+})();
+
