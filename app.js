@@ -600,3 +600,53 @@ h2{font-size:17px;margin:0 0 15px}
   update();
 })();
 
+
+
+/* ===== آمار واقعی بازدید سایت با GoatCounter ===== */
+(function initSiteStats(){
+  const dayEl = document.getElementById('siteStatDay');
+  const weekEl = document.getElementById('siteStatWeek');
+  const monthEl = document.getElementById('siteStatMonth');
+  const yearEl = document.getElementById('siteStatYear');
+  if(!dayEl || !weekEl || !monthEl || !yearEl) return;
+
+  const base = 'https://mohasebateng.goatcounter.com/counter/TOTAL.json';
+  const fa = n => String(n).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
+
+  function today(){
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  }
+
+  async function getCount(start){
+    const url = `${base}?start=${encodeURIComponent(start)}`;
+    const res = await fetch(url, {cache:'no-store'});
+    if(!res.ok) throw new Error(`GoatCounter ${res.status}`);
+    const data = await res.json();
+    return data && data.count != null ? String(data.count) : '۰';
+  }
+
+  async function load(){
+    const requests = [
+      ['day', today()],
+      ['week', 'week'],
+      ['month', 'month'],
+      ['year', 'year']
+    ];
+    const elements = {day:dayEl,week:weekEl,month:monthEl,year:yearEl};
+    await Promise.all(requests.map(async ([key,start])=>{
+      try{
+        const value = await getCount(start);
+        elements[key].textContent = fa(value);
+      }catch(error){
+        elements[key].textContent = '—';
+        console.warn('Site stats unavailable:', error);
+      }
+    }));
+  }
+
+  load();
+})();
